@@ -1,4 +1,5 @@
 import os
+import visdom
 import numpy as np
 import torch
 from torch.optim import Adam
@@ -11,7 +12,36 @@ from utils import grad_false, hard_update, soft_update, to_batch,\
 import random
 from multi_step import *
 
-PREF = [[0.9, 0.1], [0.5, 0.5], [0.1, 0.9]]
+PREF = [[0.9, 0.1], [0.8, 0.2], [0.7, 0.3], [0.6, 0.4], [0.5, 0.5], [0.4, 0.6], [0.3, 0.7], [0.2, 0.8],[0.1,0.9]]
+
+#PREF = [[0.9, 0.1], [0.5,0.5], [0.1,0.9]]
+
+class Monitor(object):
+
+    def __init__(self, spec,train=True):
+        self.vis = visdom.Visdom()
+        self.train = train
+        self.spec = spec
+
+        self.value_window = None
+        self.text_window = None
+
+    def update(self, eps, tot_reward, Rew_1, Rew_2):
+
+        if self.value_window == None:
+            self.value_window = self.vis.line(X=torch.Tensor([eps]).cpu(),
+                                              Y=torch.Tensor([tot_reward, Rew_1, Rew_2]).unsqueeze(0).cpu(),
+                                              opts=dict(xlabel='episode',
+                                                        ylabel='Reward value',
+                                                        title='Value Dynamics' + str(self.spec),
+                                                        legend=['Total Reward', 'Rew_1', 'Rew_2']))
+        else:
+            self.vis.line(
+                X=torch.Tensor([eps]).cpu(),
+                Y=torch.Tensor([tot_reward, Rew_1, Rew_2]).unsqueeze(0).cpu(),
+                win=self.value_window,
+                update='append')
+
 
 class SacAgent:
 
@@ -21,7 +51,7 @@ class SacAgent:
                  multi_step=1, per=False, alpha=0.6, beta=0.4,
                  beta_annealing=0.0001, grad_clip=None, updates_per_step=1,
                  start_steps=10000, log_interval=10, target_update_interval=1,
-                 eval_interval=500, cuda=True, seed=0):
+                 eval_interval=1000, cuda=True, seed=0):
         self.env = env
 
         torch.manual_seed(seed)
@@ -29,6 +59,12 @@ class SacAgent:
         self.env.seed(seed)
         torch.backends.cudnn.deterministic = True  # It harms a performance.
         torch.backends.cudnn.benchmark = False
+        
+        self.monitor = []
+        for i in PREF:
+            moni = Monitor(spec = i,train=True )
+            self.monitor.append(moni)
+
 
         self.device = torch.device(
             "cuda" if cuda and torch.cuda.is_available() else "cpu")
@@ -144,8 +180,8 @@ class SacAgent:
     def exploit(self, state, preference):
         # act without randomness
  
-        preference = torch.FloatTensor(preference).unsqueeze(0).to(self.device)
         state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        preference = torch.FloatTensor(preference).unsqueeze(0).to(self.device)
         with torch.no_grad():
             _, _, action = self.policy.sample(state, preference)
         return action.cpu().numpy().reshape(-1)
@@ -160,8 +196,10 @@ class SacAgent:
     def calc_target_q(self, states, preference, actions, rewards, next_states, dones):
         with torch.no_grad():
             next_actions, next_entropies, _ = self.policy.sample(next_states, preference)
-            next_q1, next_q2 = self.critic_target(next_states, preference, next_actions)
-            next_q = torch.min(next_q1, next_q2) + self.alpha * next_entropies
+            next_q1, next_q2 = self.critic_target(next_states, preference, next_actions)           
+            #next_q = torch.min(next_q1, next_q2) + self.alpha * next_entropies
+            
+            next_q = next_q1 + self.alpha * next_entropies
 
         target_q = rewards + (1.0 - dones) * self.gamma_n * next_q
 
@@ -218,9 +256,8 @@ class SacAgent:
                     self.learn()
 
             if self.steps % self.eval_interval == 0:
-                self.evaluate([0.5,0.5])
-                self.evaluate([0.1,0.9])
-                self.evaluate([0.9,0.1])
+                for i in range(len(PREF)):
+                    self.evaluate(PREF[i],self.monitor[i])
                 self.save_models()
 
             state = next_state
@@ -341,11 +378,11 @@ class SacAgent:
             mean_q2s.append(mean_q1)
 
 
-        q1_loss = max(q1_losses)
-        q2_loss = max(q2_losses)
-        error = max(errors)
-        mean_q1 = max(mean_q1s)
-        mean_q2 = max(mean_q2s)
+        q1_loss = min(q1_losses)
+        q2_loss = min(q2_losses)
+        error = min(errors)
+        mean_q1 = min(mean_q1s)
+        mean_q2 = min(mean_q2s)
 
         return q1_loss, q2_loss, errors, mean_q1, mean_q2
 
@@ -386,7 +423,7 @@ class SacAgent:
             * weights)
         return entropy_loss
 
-    def evaluate(self, preference):
+    def evaluate(self, preference, monitor):
         episodes = 10
         returns = np.empty((episodes,self.env.reward_num))
         preference = np.array(preference)
@@ -406,6 +443,7 @@ class SacAgent:
         self.writer.add_scalar(
             'reward/test', mean_return, self.steps)
         '''
+        monitor.update(self.steps/self.eval_interval, np.dot(preference,mean_return), mean_return[0], mean_return[1])
         print('-' * 60)
         print(f'preference ', preference,
               f'Num steps: {self.steps:<5}  '

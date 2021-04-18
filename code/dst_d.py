@@ -74,7 +74,7 @@ class DeepSeaTreasure(gym.Env):
         # 1st: treasure value || 2nd: time penalty
         self.reward_spec = [[0, 14], [-1, 0]]
         
-        self._max_episode_steps = 100
+        self._max_episode_steps = 30
         self.reward_num = 2
         self.current_state = np.array([0, 0])
         self.terminal = False
