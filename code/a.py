@@ -1,7 +1,8 @@
 import numpy as np
+import torch
 
-a = np.array([0.9, 0.1])
-b = np.array([1.0, 1.0])
+v = np.random.rand(2)
+a = v / np.sum(v)
 
 
-print(np.dot(a,b))
+print(a)

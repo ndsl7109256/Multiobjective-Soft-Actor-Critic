@@ -57,6 +57,7 @@ class SacAgent:
         torch.manual_seed(seed)
         np.random.seed(seed)
         self.env.seed(seed)
+        random.seed(seed)
         torch.backends.cudnn.deterministic = True  # It harms a performance.
         torch.backends.cudnn.benchmark = False
         
@@ -160,7 +161,7 @@ class SacAgent:
 
     def act(self, state, preference=None):
         if preference is None:
-            rand = random.randint(0, 2)
+            rand = random.randint(0, len(PREF)-1)
             preference = np.array(PREF[rand])
         
         if self.start_steps > self.steps:
@@ -197,8 +198,7 @@ class SacAgent:
         with torch.no_grad():
             next_actions, next_entropies, _ = self.policy.sample(next_states, preference)
             next_q1, next_q2 = self.critic_target(next_states, preference, next_actions)           
-            #next_q = torch.min(next_q1, next_q2) + self.alpha * next_entropies
-            
+           # next_q = torch.min(next_q1, next_q2) + self.alpha * next_entropies
             next_q = next_q1 + self.alpha * next_entropies
 
         target_q = rewards + (1.0 - dones) * self.gamma_n * next_q
@@ -211,12 +211,12 @@ class SacAgent:
         episode_steps = 0
         done = False
         state = self.env.reset()
+        rand = random.randint(0, len(PREF)-1)
+        preference = np.array(PREF[rand])
 
         while not done:
-            rand = random.randint(0, 2)
-            preference = np.array([0.9,0.1])
             ## Just fixed
-            action = self.act(state)
+            action = self.act(state, preference)
             next_state, reward, done = self.env.step(action)
             self.steps += 1
             episode_steps += 1
@@ -289,7 +289,7 @@ class SacAgent:
 
         
 
-        rand = random.randint(0, 2)
+        rand = random.randint(0, len(PREF)-1)
         preference = torch.tensor(PREF[rand] ,device = self.device)
 
         q1_loss, q2_loss, errors, mean_q1, mean_q2 =\
@@ -352,11 +352,11 @@ class SacAgent:
 
             curr_q1, curr_q2 = self.calc_current_q(states, D_pref, actions, rewards, next_states, dones)
             
-            curr_q1 = torch.tensordot(curr_q1, preference, dims = 1)
-            curr_q2 = torch.tensordot(curr_q2, preference, dims = 1)
         
             target_q = self.calc_target_q(states, D_pref, actions, rewards, next_states, dones)
 
+            curr_q1 = torch.tensordot(curr_q1, preference, dims = 1)
+            curr_q2 = torch.tensordot(curr_q2, preference, dims = 1)
 
             target_q = torch.tensordot( target_q, preference, dims = 1)
 
