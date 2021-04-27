@@ -35,7 +35,7 @@ def run():
         'start_steps': 10000,
         'log_interval': 10,
         'target_update_interval': 1,
-        'eval_interval': 10000,
+        'eval_interval': 5000,
         'cuda': args.cuda,
         'seed': args.seed
     }

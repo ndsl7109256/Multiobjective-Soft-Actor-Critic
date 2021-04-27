@@ -55,6 +55,8 @@ class SacAgent:
         self.env = env
 
         torch.manual_seed(seed)
+        if cuda:
+            torch.cuda.manual_seed(seed)
         np.random.seed(seed)
         self.env.seed(seed)
         random.seed(seed)
@@ -65,7 +67,6 @@ class SacAgent:
         for i in PREF:
             moni = Monitor(spec = i,train=True )
             self.monitor.append(moni)
-
 
         self.device = torch.device(
             "cuda" if cuda and torch.cuda.is_available() else "cpu")
@@ -198,8 +199,18 @@ class SacAgent:
         with torch.no_grad():
             next_actions, next_entropies, _ = self.policy.sample(next_states, preference)
             next_q1, next_q2 = self.critic_target(next_states, preference, next_actions)           
+            
+
+            w_q1 = torch.einsum('ij,j->i',[next_q1, preference[0] ])
+            w_q2 = torch.einsum('ij,j->i',[next_q2, preference[0] ])
+            mask = torch.lt(w_q1,w_q2)
+            mask = mask.repeat([1,self.env.reward_num])
+            mask = torch.reshape(mask, next_q1.shape)
+
+            minq = torch.where( mask, next_q1, next_q2)
+                
            # next_q = torch.min(next_q1, next_q2) + self.alpha * next_entropies
-            next_q = next_q1 + self.alpha * next_entropies
+            next_q = minq + self.alpha * next_entropies
 
         target_q = rewards + (1.0 - dones) * self.gamma_n * next_q
 
@@ -217,6 +228,7 @@ class SacAgent:
         while not done:
             ## Just fixed
             action = self.act(state, preference)
+            #action = self.act(state)
             next_state, reward, done = self.env.step(action)
             self.steps += 1
             episode_steps += 1
@@ -395,7 +407,7 @@ class SacAgent:
             D_pref = torch.tensor(i,device = self.device)
             D_pref = D_pref.repeat(self.batch_size,1)
             # We re-sample actions to calculate expectations of Q.
-            sampled_action, entropy, _ = self.policy.sample(states,D_pref)
+            sampled_action, entropy, _ = self.policy.sample(states,D_pref) ############################## w'?
             # expectations of Q with clipped double Q technique
             
             q1, q2 = self.critic(states, D_pref, sampled_action)
@@ -424,20 +436,28 @@ class SacAgent:
         return entropy_loss
 
     def evaluate(self, preference, monitor):
-        episodes = 10
+        episodes = 1
         returns = np.empty((episodes,self.env.reward_num))
         preference = np.array(preference)
         for i in range(episodes):
             state = self.env.reset()
             episode_reward = np.zeros(self.env.reward_num)
             done = False
+            trace = []
+            actions = []
             while not done:
                 action = self.exploit(state,preference )
-
+                
+                trace.append(list(state))
+                actions.append(list(action))
                 next_state, reward, done = self.env.step(action)
                 episode_reward += reward
                 state = next_state
+
+
             returns[i] = episode_reward
+            print('state', trace )
+            print('action', actions )
         mean_return = np.mean(returns, axis=0)
         '''
         self.writer.add_scalar(
