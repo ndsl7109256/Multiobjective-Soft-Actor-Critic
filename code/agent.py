@@ -133,7 +133,9 @@ class SacAgent:
 
         self.writer = SummaryWriter(log_dir=self.summary_dir)
         self.train_rewards = RunningMeanStats(log_interval)
-
+        
+        self.set_num = 16 # set of ω'
+        
         self.steps = 0
         self.learning_steps = 0
         self.episodes = 0
@@ -149,6 +151,12 @@ class SacAgent:
         self.log_interval = log_interval
         self.target_update_interval = target_update_interval
         self.eval_interval = eval_interval
+    def get_pref(self):
+        preference = np.random.rand( self.env.reward_num)
+        preference = preference.astype(np.float32)
+        preference /= preference.sum()
+        return preference
+
 
     def run(self):
         while True:
@@ -162,9 +170,9 @@ class SacAgent:
 
     def act(self, state, preference=None):
         if preference is None:
-            rand = random.randint(0, len(PREF)-1)
-            preference = np.array(PREF[rand])
-        
+            #rand = random.randint(0, len(PREF)-1)
+            #preference = np.array(PREF[rand])
+            preference = self.get_pref()
         if self.start_steps > self.steps:
             action = self.env.action_space.sample()
         else:
@@ -222,9 +230,10 @@ class SacAgent:
         episode_steps = 0
         done = False
         state = self.env.reset()
-        rand = random.randint(0, len(PREF)-1)
-        preference = np.array(PREF[rand])
 
+        #rand = random.randint(0, len(PREF)-1)
+        #preference = np.array(PREF[rand])
+        preference = self.get_pref()
         while not done:
             ## Just fixed
             action = self.act(state, preference)
@@ -302,12 +311,18 @@ class SacAgent:
         
 
         rand = random.randint(0, len(PREF)-1)
-        preference = torch.tensor(PREF[rand] ,device = self.device)
+        preference = self.get_pref()
+        preference = torch.tensor(preference ,device = self.device)
+        PREF_SET = []
+        for _ in range(self.set_num):
+            p = self.get_pref()
+            PREF_SET.append(p)
+
 
         q1_loss, q2_loss, errors, mean_q1, mean_q2 =\
-            self.calc_critic_loss(batch, weights, preference)
+            self.calc_critic_loss(batch, weights, preference, PREF_SET)
         
-        policy_loss, entropies = self.calc_policy_loss(batch, weights, preference)
+        policy_loss, entropies = self.calc_policy_loss(batch, weights, preference, PREF_SET)
 
         update_params(
             self.q1_optim, self.critic.Q1, q1_loss, self.grad_clip)
@@ -346,7 +361,7 @@ class SacAgent:
             self.writer.add_scalar(
                 'stats/entropy', entropies.detach().mean().item(),
                 self.learning_steps)
-    def calc_critic_loss(self, batch, weights, preference):
+    def calc_critic_loss(self, batch, weights, preference, PREF):
         
 
         states, _, actions, rewards, next_states, dones = batch
@@ -398,7 +413,7 @@ class SacAgent:
 
         return q1_loss, q2_loss, errors, mean_q1, mean_q2
 
-    def calc_policy_loss(self, batch, weights, preference):
+    def calc_policy_loss(self, batch, weights, preference, PREF):
         states, preferences, actions, rewards, next_states, dones = batch
         
         
@@ -406,8 +421,9 @@ class SacAgent:
         for i in PREF:
             D_pref = torch.tensor(i,device = self.device)
             D_pref = D_pref.repeat(self.batch_size,1)
+            preferences = preference.repeat(self.batch_size,1)
             # We re-sample actions to calculate expectations of Q.
-            sampled_action, entropy, _ = self.policy.sample(states,D_pref) ############################## w'?
+            sampled_action, entropy, _ = self.policy.sample(states, preferences) ############################## w'?
             # expectations of Q with clipped double Q technique
             
             q1, q2 = self.critic(states, D_pref, sampled_action)
