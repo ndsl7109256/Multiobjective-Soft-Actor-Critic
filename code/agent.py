@@ -16,10 +16,12 @@ PREF = [[0.9, 0.1], [0.8, 0.2], [0.7, 0.3], [0.6, 0.4], [0.5, 0.5], [0.4, 0.6], 
 
 #PREF = [[0.9, 0.1], [0.5,0.5], [0.1,0.9]]
 
+prefer_num = 16
+
 class Monitor(object):
 
     def __init__(self, spec,train=True):
-        self.vis = visdom.Visdom()
+        self.vis = visdom.Visdom(env = str(prefer_num)+'pref')
         self.train = train
         self.spec = spec
 
@@ -134,7 +136,7 @@ class SacAgent:
         self.writer = SummaryWriter(log_dir=self.summary_dir)
         self.train_rewards = RunningMeanStats(log_interval)
         
-        self.set_num = 16 # set of ω'
+        self.set_num = prefer_num # set of ω'
         
         self.steps = 0
         self.learning_steps = 0
@@ -151,10 +153,16 @@ class SacAgent:
         self.log_interval = log_interval
         self.target_update_interval = target_update_interval
         self.eval_interval = eval_interval
+
     def get_pref(self):
         preference = np.random.rand( self.env.reward_num)
         preference = preference.astype(np.float32)
         preference /= preference.sum()
+        '''
+        PRE = [[0.9, 0.1], [0.5,0.5], [0.1,0.9]]
+        preference = np.array(random.choice(PRE))
+        preference = preference.astype(np.float32)
+        '''
         return preference
 
 
@@ -198,7 +206,7 @@ class SacAgent:
 
     def calc_current_q(self, states, preference, actions, rewards, next_states, dones):
 
-        curr_q1, curr_q2 = self.critic(states, preference, actions)
+        curr_q1, curr_q2 = self.critic(states, actions, preference)
         
 
         return curr_q1, curr_q2
@@ -206,7 +214,7 @@ class SacAgent:
     def calc_target_q(self, states, preference, actions, rewards, next_states, dones):
         with torch.no_grad():
             next_actions, next_entropies, _ = self.policy.sample(next_states, preference)
-            next_q1, next_q2 = self.critic_target(next_states, preference, next_actions)           
+            next_q1, next_q2 = self.critic_target(next_states, next_actions, preference)           
             
 
             w_q1 = torch.einsum('ij,j->i',[next_q1, preference[0] ])
@@ -311,13 +319,14 @@ class SacAgent:
         
 
         rand = random.randint(0, len(PREF)-1)
-        preference = self.get_pref()
-        preference = torch.tensor(preference ,device = self.device)
         PREF_SET = []
-        for _ in range(self.set_num):
+        preference = self.get_pref()
+        PREF_SET.append(preference)
+        for _ in range(self.set_num-1):
             p = self.get_pref()
             PREF_SET.append(p)
 
+        preference = torch.tensor(preference ,device = self.device)
 
         q1_loss, q2_loss, errors, mean_q1, mean_q2 =\
             self.calc_critic_loss(batch, weights, preference, PREF_SET)
@@ -426,7 +435,7 @@ class SacAgent:
             sampled_action, entropy, _ = self.policy.sample(states, preferences) ############################## w'?
             # expectations of Q with clipped double Q technique
             
-            q1, q2 = self.critic(states, D_pref, sampled_action)
+            q1, q2 = self.critic(states, sampled_action, D_pref)
             
             q1 = torch.tensordot(q1, preference, dims = 1)
             q2 = torch.tensordot(q2, preference, dims = 1)

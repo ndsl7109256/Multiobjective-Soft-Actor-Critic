@@ -13,13 +13,13 @@ class BaseNetwork(nn.Module):
 
 
 class QNetwork(BaseNetwork):
-    def __init__(self, num_inputs, num_weights, num_actions, hidden_units=[256, 256],
+    def __init__(self, num_inputs, num_actions, num_weights, hidden_units=[256, 256],
                  initializer='xavier'):
         super(QNetwork, self).__init__()
 
         # https://github.com/ku2482/rltorch/blob/master/rltorch/network/builder.py
         self.Q = create_linear_network(
-            num_inputs+num_weights+num_actions, num_weights, hidden_units=hidden_units,
+            num_inputs+num_actions+num_weights, num_weights, hidden_units=hidden_units,
             initializer=initializer)
 
     def forward(self, x):
@@ -29,17 +29,17 @@ class QNetwork(BaseNetwork):
 
 class TwinnedQNetwork(BaseNetwork):#Critic
 
-    def __init__(self, num_inputs, num_weights, num_actions, hidden_units=[256, 256],
+    def __init__(self, num_inputs, num_actions, num_weights, hidden_units=[256, 256],
                  initializer='xavier'):
         super(TwinnedQNetwork, self).__init__()
 
         self.Q1 = QNetwork(
-            num_inputs, num_weights, num_actions, hidden_units, initializer)
+            num_inputs, num_actions, num_weights, hidden_units, initializer)
         self.Q2 = QNetwork(
-            num_inputs, num_weights, num_actions, hidden_units, initializer)
+            num_inputs, num_actions, num_weights, hidden_units, initializer)
 
-    def forward(self, states, preferences ,actions):
-        x = torch.cat([states, preferences ,actions], dim=1) # preferences should be ω'
+    def forward(self, states, actions, preferences):
+        x = torch.cat([states, actions ,preferences], dim=1) # preferences should be ω'
         q1 = self.Q1(x)
         q2 = self.Q2(x)
         return q1, q2
