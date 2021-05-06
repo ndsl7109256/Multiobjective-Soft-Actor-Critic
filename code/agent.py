@@ -21,7 +21,7 @@ prefer_num = 16
 class Monitor(object):
 
     def __init__(self, spec,train=True):
-        self.vis = visdom.Visdom(env = str(prefer_num)+'pref')
+        self.vis = visdom.Visdom(env = str(prefer_num)+'pref' )
         self.train = train
         self.spec = spec
 
@@ -207,6 +207,12 @@ class SacAgent:
     def calc_current_q(self, states, preference, actions, rewards, next_states, dones):
 
         curr_q1, curr_q2 = self.critic(states, actions, preference)
+        print(states.shape)
+        print(states)
+        print(actions.shape)
+        print(actions)
+        print(preference.shape)
+        print(preference)
         
 
         return curr_q1, curr_q2
@@ -321,12 +327,17 @@ class SacAgent:
         rand = random.randint(0, len(PREF)-1)
         PREF_SET = []
         preference = self.get_pref()
+        preference = torch.tensor(preference ,device = self.device)
         PREF_SET.append(preference)
         for _ in range(self.set_num-1):
             p = self.get_pref()
+            p = torch.tensor(p ,device = self.device)
             PREF_SET.append(p)
-
+        '''
+        PREF_SET = PREF#####testing
+        preference = random.choice(PREF)
         preference = torch.tensor(preference ,device = self.device)
+        '''
 
         q1_loss, q2_loss, errors, mean_q1, mean_q2 =\
             self.calc_critic_loss(batch, weights, preference, PREF_SET)
@@ -383,8 +394,7 @@ class SacAgent:
 
         for i in PREF:
 
-            D_pref = torch.tensor(i,device = self.device)
-            D_pref = D_pref.repeat(self.batch_size,1)
+            D_pref = i.repeat(self.batch_size,1)
 
             curr_q1, curr_q2 = self.calc_current_q(states, D_pref, actions, rewards, next_states, dones)
             
@@ -434,6 +444,7 @@ class SacAgent:
             # We re-sample actions to calculate expectations of Q.
             sampled_action, entropy, _ = self.policy.sample(states, preferences) ############################## w'?
             # expectations of Q with clipped double Q technique
+            
             
             q1, q2 = self.critic(states, sampled_action, D_pref)
             
