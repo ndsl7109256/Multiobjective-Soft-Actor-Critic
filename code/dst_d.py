@@ -109,11 +109,17 @@ class DeepSeaTreasure(gym.Env):
         next_state = self.current_state + action
 
         valid = lambda x, ind: (x[ind] >= self.state_spec[ind][2][0]) and (x[ind] <= self.state_spec[ind][2][1])
-
+        '''
         if valid(next_state, 0) and valid(next_state, 1):
             if self.get_map_value(next_state) != -1:
                 self.current_state = next_state
-
+        '''
+        if valid(next_state, 0):
+            self.current_state[0] = next_state[0]
+        if valid(next_state, 1):
+            self.current_state[1] = next_state[1]
+            
+        
         treasure_value = self.get_map_value(self.current_state)
         #print(treasure_value)
         if treasure_value == 0 or treasure_value == -1:
@@ -127,6 +133,6 @@ class DeepSeaTreasure(gym.Env):
         self.steps += 1
         if(self.steps >= self._max_episode_steps):
             self.terminal = True
-        return self.current_state, reward, self.terminal
+        return self.current_state, reward, self.terminal, {}
     
 register(id='dst_d-v0', entry_point='dst_d:DeepSeaTreasure')

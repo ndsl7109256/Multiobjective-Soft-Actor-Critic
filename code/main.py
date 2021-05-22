@@ -2,14 +2,28 @@ import os
 import argparse
 from datetime import datetime
 import gym
+import torch
+import numpy as np
+import random
 from dst_d import DeepSeaTreasure
+from MO_lunar_lander import LunarLanderContinuous
 
 from agent import SacAgent
+
+seed = 0
+torch.manual_seed(seed)
+torch.cuda.manual_seed(seed)
+torch.cuda.manual_seed_all(seed)
+np.random.seed(seed)
+random.seed(seed)
+torch.backends.cudnn.deterministic = True  # It harms a performance.
+torch.backends.cudnn.benchmark = False
 
 
 def run():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--env_id', type=str, default='dst_d-v0')
+    #parser.add_argument('--env_id', type=str, default='dst_d-v0')
+    parser.add_argument('--env_id', type=str, default='MO_LunarLander-v0')
     parser.add_argument('--cuda', action='store_true', default=True)
     parser.add_argument('--seed', type=int, default=0)
     args = parser.parse_args()
@@ -41,7 +55,7 @@ def run():
     }
 
     env = gym.make(args.env_id)
-
+    
     log_dir = os.path.join(
         'logs', args.env_id,
         f'sac-seed{args.seed}-{datetime.now().strftime("%Y%m%d-%H%M")}')

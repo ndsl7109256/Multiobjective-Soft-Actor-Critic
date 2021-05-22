@@ -73,6 +73,8 @@ class SacAgent:
         self.device = torch.device(
             "cuda" if cuda and torch.cuda.is_available() else "cpu")
         print(self.device)
+        print(self.env.observation_space.shape[0])
+        print(self.env.reward_num)
         self.policy = GaussianPolicy(
             self.env.observation_space.shape[0]+self.env.reward_num,
             self.env.action_space.shape[0],
@@ -207,12 +209,6 @@ class SacAgent:
     def calc_current_q(self, states, preference, actions, rewards, next_states, dones):
 
         curr_q1, curr_q2 = self.critic(states, actions, preference)
-        print(states.shape)
-        print(states)
-        print(actions.shape)
-        print(actions)
-        print(preference.shape)
-        print(preference)
         
 
         return curr_q1, curr_q2
@@ -252,7 +248,7 @@ class SacAgent:
             ## Just fixed
             action = self.act(state, preference)
             #action = self.act(state)
-            next_state, reward, done = self.env.step(action)
+            next_state, reward, done, _ = self.env.step(action)
             self.steps += 1
             episode_steps += 1
             episode_reward += reward
@@ -290,11 +286,12 @@ class SacAgent:
                 for _ in range(self.updates_per_step):
                     self.learn()
 
+            '''
             if self.steps % self.eval_interval == 0:
                 for i in range(len(PREF)):
                     self.evaluate(PREF[i],self.monitor[i])
                 self.save_models()
-
+            '''
             state = next_state
 
         # We log running mean of training rewards.
@@ -472,7 +469,7 @@ class SacAgent:
         return entropy_loss
 
     def evaluate(self, preference, monitor):
-        episodes = 1
+        episodes = 10
         returns = np.empty((episodes,self.env.reward_num))
         preference = np.array(preference)
         for i in range(episodes):
@@ -483,10 +480,11 @@ class SacAgent:
             actions = []
             while not done:
                 action = self.exploit(state,preference )
+                #action = self.explore(state,preference ) 
                 
                 trace.append(list(state))
                 actions.append(list(action))
-                next_state, reward, done = self.env.step(action)
+                next_state, reward, done, _ = self.env.step(action)
                 episode_reward += reward
                 state = next_state
 
